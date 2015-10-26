@@ -2034,7 +2034,7 @@ Etclface_decode_binary(ClientData cd, Tcl_Interp *ti, int objc, Tcl_Obj *const o
 	char		*str;
 	int		index;
 	int tp, sz, version;
-	char value[16384];
+	long		bin_size;
 
 	if (objc != 2) {
 		Tcl_WrongNumArgs(ti, 1, objv, "xb");
@@ -2046,19 +2046,21 @@ Etclface_decode_binary(ClientData cd, Tcl_Interp *ti, int objc, Tcl_Obj *const o
 
 	index = xb->index;
 	if (ei_get_type(xb->buff, &index, &tp, &sz) < 0) {
-		ErrorReturn(ti, "ERROR", "ei_decode_binary failed", 0);
+		ErrorReturn(ti, "ERROR", "ei_get_type failed", 0);
 		return TCL_ERROR;
 	}
-	str = Tcl_AttemptAlloc(1+sz);
+	str = Tcl_AttemptAlloc(sz + 1);
+
 	if (str == NULL) {
 		ErrorReturn(ti, "ERROR", "Could not allocate memory for binary", 0);
 		return TCL_ERROR;
 	}
 
-	if (ei_decode_binary(xb->buff, &xb->index, &str[0], &sz) < 0) {
+	if (ei_decode_binary(xb->buff, &xb->index, str, &bin_size) < 0) {
 		ErrorReturn(ti, "ERROR", "ei_decode_binary failed", 0);
 		return TCL_ERROR;
 	}
+	str[bin_size] = '\0';
 
 	Tcl_SetObjResult(ti, Tcl_NewStringObj(str, -1));
 	return TCL_OK;
