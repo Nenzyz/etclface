@@ -118,12 +118,14 @@ static Tcl_ObjCmdProc	Etclface_receive, Etclface_reg_send, Etclface_send;
 static Tcl_ObjCmdProc	Etclface_decode_atom, Etclface_decode_boolean, Etclface_decode_char,
 			Etclface_decode_double, Etclface_decode_list, Etclface_decode_long,
 			Etclface_decode_pid, Etclface_decode_ref, Etclface_decode_string,
-			Etclface_decode_term, Etclface_decode_tuple, Etclface_decode_version;
+			Etclface_decode_term, Etclface_decode_tuple, Etclface_decode_version,
+			Etclface_decode_binary, Etclface_decode_map;
 @#
 static Tcl_ObjCmdProc	Etclface_encode_atom, Etclface_encode_boolean, Etclface_encode_char,
 			Etclface_encode_double, Etclface_encode_empty_list,
 			Etclface_encode_list_header, Etclface_encode_long, Etclface_encode_pid,
-			Etclface_encode_ref, Etclface_encode_string, Etclface_encode_tuple_header;
+			Etclface_encode_ref, Etclface_encode_string, Etclface_encode_tuple_header,
+			Etclface_encode_binary, Etclface_encode_map_header;
 @#
 static Tcl_ObjCmdProc	Etclface_ref_free, Etclface_ref_new, Etclface_ref_print, Etclface_ref_show;
 @#
@@ -142,6 +144,7 @@ static EtclfaceCommand_t EtclfaceCommand[] = {@/
 	{"etclface::accept", Etclface_accept},@/
 	{"etclface::connect", Etclface_connect},@/
 	{"etclface::decode_atom", Etclface_decode_atom},@/
+	{"etclface::decode_binary", Etclface_decode_binary},@/
 	{"etclface::decode_boolean", Etclface_decode_boolean},@/
 	{"etclface::decode_char", Etclface_decode_char},@/
 	{"etclface::decode_double", Etclface_decode_double},@/
@@ -152,11 +155,13 @@ static EtclfaceCommand_t EtclfaceCommand[] = {@/
 	{"etclface::decode_string", Etclface_decode_string},@/
 	{"etclface::decode_term", Etclface_decode_term},@/
 	{"etclface::decode_tuple", Etclface_decode_tuple},@/
+	{"etclface::decode_map", Etclface_decode_map},@/
 	{"etclface::decode_version", Etclface_decode_version},@/
 	{"etclface::disconnect", Etclface_disconnect},@/
 	{"etclface::ec_free", Etclface_ec_free},@/
 	{"etclface::ec_show", Etclface_ec_show},@/
 	{"etclface::encode_atom", Etclface_encode_atom},@/
+	{"etclface::encode_binary", Etclface_encode_binary},@/
 	{"etclface::encode_boolean", Etclface_encode_boolean},@/
 	{"etclface::encode_char", Etclface_encode_char},@/
 	{"etclface::encode_double", Etclface_encode_double},@/
@@ -167,6 +172,7 @@ static EtclfaceCommand_t EtclfaceCommand[] = {@/
 	{"etclface::encode_ref", Etclface_encode_ref},@/
 	{"etclface::encode_string", Etclface_encode_string},@/
 	{"etclface::encode_tuple_header", Etclface_encode_tuple_header},@/
+	{"etclface::encode_map_header", Etclface_encode_map_header},@/
 	{"etclface::init", Etclface_init},@/
 	{"etclface::listen", Etclface_listen},@/
 	{"etclface::make_chan", Etclface_make_chan},@/
@@ -447,6 +453,7 @@ Etclface_socket(ClientData cd, Tcl_Interp *ti, int objc, Tcl_Obj *const objv[])
 	char			*host;
 	int			fd, port;
 	struct sockaddr_in	sinaddr;
+	const char *on = "1";
 
 	if (objc != 3) {
 		Tcl_WrongNumArgs(ti, 1, objv, "host port");
@@ -479,7 +486,9 @@ Etclface_socket(ClientData cd, Tcl_Interp *ti, int objc, Tcl_Obj *const objv[])
 		ErrorReturn(ti, "ERROR", "failed to get socket", errno);
 		return TCL_ERROR;
 	}
-
+	
+	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, on, sizeof(on));
+	
 	if (bind(fd, (struct sockaddr *)&sinaddr, sizeof(struct sockaddr)) < 0) {
 		close(fd);
 		ErrorReturn(ti, "ERROR", "failed to bind to socket", errno);
@@ -1671,6 +1680,69 @@ Etclface_decode_ref(ClientData cd, Tcl_Interp *ti, int objc, Tcl_Obj *const objv
 	return TCL_OK;
 }
 
+@ \.{etclface::encode\_binary xb binary}.
+
+Takes an existing \.{ei\_x\_buff} and adds the binary to it.
+
+@<Encode commands@>=
+static int
+Etclface_encode_binary(ClientData cd, Tcl_Interp *ti, int objc, Tcl_Obj *const objv[])
+{
+	const char *str;
+	ei_x_buff *xb;
+
+	if (objc!=3) {
+		Tcl_WrongNumArgs(ti, 1, objv, "xb string");
+		return TCL_ERROR;
+	}
+
+	if (get_xb(ti, objv[1], &xb) == TCL_ERROR)
+		return TCL_ERROR;
+
+	str = Tcl_GetString(objv[2]);
+
+	if (ei_x_encode_binary(xb, str, sizeof(str)) < 0) {
+		ErrorReturn(ti, "ERROR", "ei_x_encode_binary failed", 0);
+		return TCL_ERROR;
+	}
+
+	return TCL_OK;
+}
+
+@ \.{etclface::encode\_map\_header xb arity}.
+
+Initialize encoding of a map using \.{ei\_x\_encode\_map\_header()}.
+
+@<Encode commands@>=
+static int
+Etclface_encode_map_header(ClientData cd, Tcl_Interp *ti, int objc, Tcl_Obj *const objv[])
+{
+	ei_x_buff *xb;
+	int arity;
+
+	if (objc!=3) {
+		Tcl_WrongNumArgs(ti, 1, objv, "xb arity");
+		return TCL_ERROR;
+	}
+
+	if (get_xb(ti, objv[1], &xb) == TCL_ERROR)
+		return TCL_ERROR;
+
+	if (Tcl_GetIntFromObj(ti, objv[2], &arity) == TCL_ERROR)
+		return TCL_ERROR;
+	if (arity < 0) {
+		ErrorReturn(ti, "ERROR", "arity cannot be negative", 0);
+		return TCL_ERROR;
+	}
+
+	if (ei_x_encode_map_header(xb, arity) < 0) {
+		ErrorReturn(ti, "ERROR", "ei_x_encode_map_header failed", 0);
+		return TCL_ERROR;
+	}
+
+	return TCL_OK;
+}
+
 @ \.{etclface::decode\_string xb}.
 
 Assuming that the next term in \.{xb} is a string, extract it and return
@@ -1945,6 +2017,81 @@ Etclface_ref_new(ClientData cd, Tcl_Interp *ti, int objc, Tcl_Obj *const objv[])
 	ref->creation	= 0;
 
 	Tcl_SetObjResult(ti, Tcl_ObjPrintf("ref0x%x", ref));
+
+	return TCL_OK;
+}
+
+@ \.{etclface::decode\_binary xb}.
+
+Assuming that the next term in \.{xb} is a binary, extract it and return
+as a string obj.
+
+@<Decode commands@>=
+static int
+Etclface_decode_binary(ClientData cd, Tcl_Interp *ti, int objc, Tcl_Obj *const objv[])
+{
+	ei_x_buff	*xb;
+	char		*str;
+	int		index;
+	int tp, sz, version;
+	char value[16384];
+
+	if (objc != 2) {
+		Tcl_WrongNumArgs(ti, 1, objv, "xb");
+		return TCL_ERROR;
+	}
+
+	if (get_xb(ti, objv[1], &xb) == TCL_ERROR)
+		return TCL_ERROR;
+
+	index = xb->index;
+	if (ei_get_type(xb->buff, &index, &tp, &sz) < 0) {
+		ErrorReturn(ti, "ERROR", "ei_decode_binary failed", 0);
+		return TCL_ERROR;
+	}
+	str = Tcl_AttemptAlloc(1+sz);
+	if (str == NULL) {
+		ErrorReturn(ti, "ERROR", "Could not allocate memory for binary", 0);
+		return TCL_ERROR;
+	}
+
+	if (ei_decode_binary(xb->buff, &xb->index, &str[0], &sz) < 0) {
+		ErrorReturn(ti, "ERROR", "ei_decode_binary failed", 0);
+		return TCL_ERROR;
+	}
+
+	Tcl_SetObjResult(ti, Tcl_NewStringObj(str, -1));
+	return TCL_OK;
+}
+
+
+@ \.{etclface::decode\_map xb}.
+
+Attempts to decode the map in \.{xb}. If successful, the arity of the
+map will be returned. It is then up to the caller to go through the
+terms of the map and decode them individually.
+
+@<Decode commands@>=
+static int
+Etclface_decode_map(ClientData cd, Tcl_Interp *ti, int objc, Tcl_Obj *const objv[])
+{
+	ei_x_buff	*xb;
+	int		arity;
+
+	if (objc != 2) {
+		Tcl_WrongNumArgs(ti, 1, objv, "xb");
+		return TCL_ERROR;
+	}
+
+	if (get_xb(ti, objv[1], &xb) == TCL_ERROR)
+		return TCL_ERROR;
+
+	if (ei_decode_map_header(xb->buff, &xb->index, &arity) < 0) {
+		ErrorReturn(ti, "ERROR", "ei_decode_map_header failed", 0);
+		return TCL_ERROR;
+	}
+
+	Tcl_SetObjResult(ti, Tcl_NewIntObj(arity));
 
 	return TCL_OK;
 }
