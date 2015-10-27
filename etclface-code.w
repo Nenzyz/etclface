@@ -1701,7 +1701,7 @@ Etclface_encode_binary(ClientData cd, Tcl_Interp *ti, int objc, Tcl_Obj *const o
 
 	str = Tcl_GetString(objv[2]);
 
-	if (ei_x_encode_binary(xb, str, sizeof(str)) < 0) {
+	if (ei_x_encode_binary(xb, str, (unsigned)strlen(str) * sizeof(char)) < 0) {
 		ErrorReturn(ti, "ERROR", "ei_x_encode_binary failed", 0);
 		return TCL_ERROR;
 	}
