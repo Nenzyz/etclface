@@ -822,6 +822,10 @@ Etclface_receive(ClientData cd, Tcl_Interp *ti, int objc, Tcl_Obj *const objv[])
 node, we return \.{TICK} to the caller. Timeouts and errors are returned
 as error, although, in future a timeout may be treated as a normal return.
 
+NB: When consistant creation of \.{xb} and read/write operation, when writing \.{xb} on receive, 
+if previous buffer was freed but was bigger than new one, data may still persists,
+therefore it is recommended on buffer decoding check \.{index} and \.{buffsz}, \.{index} 
+should not be greater than size of \.{buffer}.
 @<Receive message@>=
 	int res;
 
@@ -1893,6 +1897,7 @@ and a handle returned as the value.
 		case ERL_SMALL_TUPLE_EXT:
 		case ERL_LARGE_TUPLE_EXT:
 		case ERL_LIST_EXT:
+		case ERL_MAP_EXT:
 		case ERL_NIL_EXT:@/
 			Tcl_DictObjPut(ti, termdict, Tcl_NewStringObj("arity", -1), Tcl_NewIntObj(term->arity));
 			break;
